@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(layout="wide")
 from pypdf import PdfReader
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -67,8 +68,6 @@ if "llm" not in st.session_state:
     st.session_state["llm"] = load_llm()
 
 
-
-st.set_page_config(layout="wide")
 st.title("SLM + RAG Pipeline")
 
 left_col, right_col = st.columns(2)
