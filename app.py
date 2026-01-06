@@ -1,6 +1,6 @@
 import streamlit as st
 
-# ⚡ Must be the first Streamlit command
+# ⚡ Must be the VERY FIRST Streamlit command - before ANY other code
 st.set_page_config(layout="wide")
 
 from pypdf import PdfReader
@@ -71,11 +71,6 @@ def load_llm():
     return HuggingFacePipeline(pipeline=pipe)
 
 # -----------------------------
-# Load LLM (cached)
-# -----------------------------
-llm = load_llm()
-
-# -----------------------------
 # Streamlit UI
 # -----------------------------
 st.title("SLM + RAG Pipeline")
@@ -103,6 +98,9 @@ with right_col:
     if "vectorstore" not in st.session_state:
         st.info("Upload a policy file to start querying")
     else:
+        # Load LLM only when needed (lazy loading)
+        llm = load_llm()
+        
         retriever = st.session_state["vectorstore"].as_retriever()
 
         qa_chain = RetrievalQA.from_chain_type(
@@ -121,7 +119,7 @@ with right_col:
             st.subheader("Answer")
             st.write(answer)
 
-            if hasattr(qa_chain, "return_source_documents") and qa_chain.return_source_documents:
+            if sources:
                 st.subheader("Source Chunks")
-                for doc in qa_chain.retriever.get_relevant_documents(query):
+                for doc in sources:
                     st.write(doc.page_content)
