@@ -62,9 +62,10 @@ def load_llm():
         "text-generation",
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=128,
-        temperature=0.1,
-        do_sample=False,
+        max_new_tokens=256,
+        temperature=0.2,
+        do_sample=True,
+        repetition_penalty=1.2,
         pad_token_id=tokenizer.eos_token_id
     )
 
