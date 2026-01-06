@@ -30,43 +30,61 @@ def build_vectorstore(chunks):
 
 @st.cache_resource(show_spinner="Loading LLM (this may take a few minutes)")
 def load_llm():
-    model_name = "microsoft/phi-2"
-    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+    # Using a more reliable model for QA tasks
+    model_name = "google/flan-t5-base"  # Better for question answering
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    st.info(f"🖥️ Using device: {device}")
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        trust_remote_code=True,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
         low_cpu_mem_usage=True,
-        device_map={"": "cpu"}
+        device_map="auto"
     )
+    
+    # Proper generation config to prevent gibberish
     pipe = pipeline(
-        "text-generation",
+        "text2text-generation",  # Changed from text-generation
         model=model,
         tokenizer=tokenizer,
-        max_new_tokens=256,  # Increased from 128
-        temperature=0.3,      # Slightly increased for better generation
-        do_sample=True,       # Changed to True for better quality
-        repetition_penalty=1.2,  # Prevent repetition
-        pad_token_id=tokenizer.eos_token_id
+        max_length=512,  # Changed from max_new_tokens
+        min_length=20,   # Ensure minimum quality response
+        temperature=0.7,
+        do_sample=True,
+        top_k=50,
+        top_p=0.95,
+        repetition_penalty=1.2,
+        no_repeat_ngram_size=3,  # Prevents repeating phrases
+        early_stopping=True,
+        num_beams=4  # Beam search for better quality
     )
+    
     return HuggingFacePipeline(pipeline=pipe)
 
-# Custom prompt template optimized for Phi-2
-prompt_template = """Use the following context to answer the question. Extract relevant information directly from the context.
+# Optimized prompt template
+prompt_template = """Answer the question based on the context below. Be specific and concise.
 
 Context:
 {context}
 
 Question: {question}
 
-Answer based on the context above:"""
+Answer:"""
 
 PROMPT = PromptTemplate(
     template=prompt_template,
     input_variables=["context", "question"]
 )
 
-st.title("SLM + RAG Pipeline")
+st.title("🚀 SLM + RAG Pipeline")
+
+# Display device status
+if torch.cuda.is_available():
+    st.success("✅ GPU Detected - Fast Mode")
+else:
+    st.info("💻 Running on CPU")
 
 left_col, right_col = st.columns(2)
 
@@ -79,13 +97,13 @@ with left_col:
             text = read_policy(uploaded_file)
             chunks = chunk_text(text)
             vectorstore = build_vectorstore(chunks)
-            st.success("Policy indexed successfully!")
+            st.success("✅ Policy indexed successfully!")
         st.session_state["vectorstore"] = vectorstore
 
 with right_col:
     st.header("Ask Questions")
     if "vectorstore" not in st.session_state:
-        st.info("Upload a policy file to start querying")
+        st.info("👆 Upload a policy file to start querying")
     else:
         llm = load_llm()
         retriever = st.session_state["vectorstore"].as_retriever(search_kwargs={"k": 3})
@@ -100,15 +118,25 @@ with right_col:
         
         query = st.text_input("Enter your query")
         if query:
-            with st.spinner("Processing..."):
-                response = qa_chain.invoke({"query": query})
-                answer = response["result"]
-                sources = response["source_documents"]
+            with st.spinner("🤔 Generating answer..."):
+                try:
+                    response = qa_chain.invoke({"query": query})
+                    answer = response["result"]
+                    sources = response["source_documents"]
+                    
+                    # Clean the answer
+                    if "Answer:" in answer:
+                        answer = answer.split("Answer:")[-1].strip()
+                    
+                    # Remove any remaining prompt artifacts
+                    answer = answer.replace("Context:", "").replace("Question:", "").strip()
+                    
+                except Exception as e:
+                    st.error(f"Error generating response: {str(e)}")
+                    answer = "Unable to generate response. Please try again."
+                    sources = []
             
             st.subheader("Answer")
-            # Clean up the answer (remove the prompt echo if present)
-            if "Answer based on the context above:" in answer:
-                answer = answer.split("Answer based on the context above:")[-1].strip()
             st.write(answer)
             
             if sources:
