@@ -1,9 +1,8 @@
 import streamlit as st
-
 st.set_page_config(layout="wide")
 
 from pypdf import PdfReader
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -12,102 +11,112 @@ from langchain_community.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
 import torch
 
+# ------------------------
+# Utility functions
+# ------------------------
+
 def read_policy(policy_file):
     if policy_file.name.endswith(".pdf"):
         reader = PdfReader(policy_file)
-        return "\n".join(page.extract_text() for page in reader.pages)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
     else:
         return policy_file.read().decode("utf-8", errors="ignore")
 
 def chunk_text(text):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=400,
+        chunk_overlap=50
+    )
     return splitter.split_text(text)
 
 @st.cache_data
 def build_vectorstore(chunks):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
     return FAISS.from_texts(chunks, embeddings)
 
-@st.cache_resource(show_spinner="Loading LLM (this may take a few minutes)")
+# ------------------------
+# Load SMALL LLM (CPU safe)
+# ------------------------
+
+@st.cache_resource(show_spinner="Loading small LLM (CPU-safe)...")
 def load_llm():
-    # Using a more reliable model for QA tasks
-    model_name = "microsoft/phi-2"  # Better for question answering
-    
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    st.info(f"🖥️ Using device: {device}")
-    
+    model_name = "google/flan-t5-small"  # ✅ small & reliable
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
+    model = AutoModelForSeq2SeqLM.from_pretrained(
         model_name,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        low_cpu_mem_usage=True,
-        device_map="auto"
+        torch_dtype=torch.float32
     )
-    
-    # Proper generation config to prevent gibberish
+
     pipe = pipeline(
-        "text2text-generation",  # Changed from text-generation
+        "text2text-generation",
         model=model,
         tokenizer=tokenizer,
-        max_length=512,  # Changed from max_new_tokens
-        min_length=20,   # Ensure minimum quality response
-        temperature=0.7,
-        do_sample=True,
-        top_k=50,
-        top_p=0.95,
-        repetition_penalty=1.2,
-        no_repeat_ngram_size=3,  # Prevents repeating phrases
-        early_stopping=True,
-        num_beams=4  # Beam search for better quality
+        max_new_tokens=256,
+        temperature=0.0,   # deterministic QA
+        do_sample=False
     )
-    
+
     return HuggingFacePipeline(pipeline=pipe)
 
-# Optimized prompt template
-prompt_template = """Answer the question based on the context below. Be specific and concise.
+# ------------------------
+# Prompt
+# ------------------------
+
+PROMPT = PromptTemplate(
+    template="""
+Answer the question using ONLY the context below.
+If the answer is not in the context, say "Not found in document".
 
 Context:
 {context}
 
-Question: {question}
+Question:
+{question}
 
-Answer:"""
-
-PROMPT = PromptTemplate(
-    template=prompt_template,
+Answer:
+""",
     input_variables=["context", "question"]
 )
 
-st.title("🚀 SLM + RAG Pipeline")
+# ------------------------
+# UI
+# ------------------------
 
-# Display device status
-if torch.cuda.is_available():
-    st.success("✅ GPU Detected - Fast Mode")
-else:
-    st.info("💻 Running on CPU")
+st.title("📄 Lightweight RAG (VM-Compatible)")
 
-left_col, right_col = st.columns(2)
+st.info("💻 Running on CPU (optimized for low-RAM VM)")
 
-with left_col:
+left, right = st.columns(2)
+
+with left:
     st.header("Upload Policy File")
-    uploaded_file = st.file_uploader("Drag and Drop the Policy File", type=["pdf", "txt"])
-    
+    uploaded_file = st.file_uploader(
+        "Upload PDF or TXT",
+        type=["pdf", "txt"]
+    )
+
     if uploaded_file:
-        with st.spinner("Processing Policy..."):
+        with st.spinner("Indexing document..."):
             text = read_policy(uploaded_file)
             chunks = chunk_text(text)
             vectorstore = build_vectorstore(chunks)
-            st.success("✅ Policy indexed successfully!")
-        st.session_state["vectorstore"] = vectorstore
+            st.session_state["vectorstore"] = vectorstore
+        st.success("✅ Document indexed")
 
-with right_col:
+with right:
     st.header("Ask Questions")
+
     if "vectorstore" not in st.session_state:
-        st.info("👆 Upload a policy file to start querying")
+        st.info("Upload a document to begin")
     else:
         llm = load_llm()
-        retriever = st.session_state["vectorstore"].as_retriever(search_kwargs={"k": 3})
-        
+        retriever = st.session_state["vectorstore"].as_retriever(
+            search_kwargs={"k": 3}
+        )
+
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
@@ -115,33 +124,17 @@ with right_col:
             return_source_documents=True,
             chain_type_kwargs={"prompt": PROMPT}
         )
-        
-        query = st.text_input("Enter your query")
+
+        query = st.text_input("Enter your question")
+
         if query:
-            with st.spinner("🤔 Generating answer..."):
-                try:
-                    response = qa_chain.invoke({"query": query})
-                    answer = response["result"]
-                    sources = response["source_documents"]
-                    
-                    # Clean the answer
-                    if "Answer:" in answer:
-                        answer = answer.split("Answer:")[-1].strip()
-                    
-                    # Remove any remaining prompt artifacts
-                    answer = answer.replace("Context:", "").replace("Question:", "").strip()
-                    
-                except Exception as e:
-                    st.error(f"Error generating response: {str(e)}")
-                    answer = "Unable to generate response. Please try again."
-                    sources = []
-            
+            with st.spinner("Answering..."):
+                result = qa_chain.invoke({"query": query})
+
             st.subheader("Answer")
-            st.write(answer)
-            
-            if sources:
-                with st.expander("📄 View Source Chunks"):
-                    for i, doc in enumerate(sources, 1):
-                        st.markdown(f"**Chunk {i}:**")
-                        st.text(doc.page_content)
-                        st.divider()
+            st.write(result["result"])
+
+            with st.expander("Source Chunks"):
+                for i, doc in enumerate(result["source_documents"], 1):
+                    st.markdown(f"**Chunk {i}**")
+                    st.text(doc.page_content)
