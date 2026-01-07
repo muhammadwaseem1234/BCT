@@ -31,7 +31,7 @@ def build_vectorstore(chunks):
 @st.cache_resource(show_spinner="Loading LLM (this may take a few minutes)")
 def load_llm():
     # Using a more reliable model for QA tasks
-    model_name = "google/flan-t5-base"  # Better for question answering
+    model_name = "microsoft/phi-2"  # Better for question answering
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     st.info(f"🖥️ Using device: {device}")
