@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f2f4f7;
+  color: #13233a;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.container {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.title {
+  margin: 0 0 18px;
+  font-size: 30px;
+}
+
+.uploadPanel {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d4dae4;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.uploadPanel button {
+  border: 0;
+  background: #0d3b66;
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.uploadPanel button:disabled {
+  background: #8da0b8;
+  cursor: default;
+}
+
+.error {
+  color: #b00020;
+  margin-top: 12px;
+}
+
+.treeWrap {
+  margin-top: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.sectionCard,
+.subSectionCard {
+  background: #fff;
+  border: 1px solid #d4dae4;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.subWrap {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.collapseBtn {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: #eaf0f8;
+  border-radius: 8px;
+  padding: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.collapseBtn.small {
+  background: #f4f7fb;
+}
+
+.paragraph {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.bulletList {
+  margin: 10px 0 0;
+  padding-left: 20px;
+}
+
+.tableWrap {
+  margin-top: 10px;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid #cad4e3;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+th {
+  background: #edf3fb;
+}
